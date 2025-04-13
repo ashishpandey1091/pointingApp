@@ -1,17 +1,25 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SESSION_STATUS } from '../models/types';
 
 export default function ObserverControls({ sessionStatus, onStart, onEnd }) {
   const [currentSessionStatus, setCurrentSessionStatus] = React.useState(sessionStatus);
+  
+  // Update local state when props change
+  useEffect(() => {
+    console.log("ObserverControls: sessionStatus prop changed to:", sessionStatus);
+    setCurrentSessionStatus(sessionStatus);
+  }, [sessionStatus]);
 
   const handleStart = () => {
-    setCurrentSessionStatus(SESSION_STATUS.ACTIVE);
+    console.log("Start button clicked");
     onStart();
+    // No need to set state here as it will update via props
   };
 
   const handleEnd = () => {
-    setCurrentSessionStatus(SESSION_STATUS.INACTIVE);
+    console.log("End button clicked");
     onEnd();
+    // No need to set state here as it will update via props
   };
 
   return (

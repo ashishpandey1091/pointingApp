@@ -8,7 +8,7 @@ export default function ResultsView({ voteSummary, averageVote, voterCount }) {
         <div className="flex-1">
           <h3 className="text-lg font-medium mb-2">Vote Distribution</h3>
           <div className="space-y-2">
-            {voteSummary.map(item => (
+            {Array.isArray(voteSummary) && voteSummary.length > 0 ? (voteSummary.map(item => (
               <div key={item.point} className="flex items-center gap-2">
                 <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center font-bold">
                   {item.point}
@@ -21,7 +21,8 @@ export default function ResultsView({ voteSummary, averageVote, voterCount }) {
                 </div>
                 <div className="w-10 text-right">{item.count}</div>
               </div>
-            ))}
+            ))      ) : (
+              <p>No votes to display</p>)}
           </div>
         </div>
         <div className="md:w-48">

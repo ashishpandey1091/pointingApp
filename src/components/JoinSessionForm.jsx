@@ -7,9 +7,7 @@ export default function JoinSessionForm({ onJoinSession }) {
 
   const handleSubmit = () => {
     const result = onJoinSession(sessionId, name, isObserver);
-    if (!result.success) {
-      alert(result.message);
-    }
+    console.log("JoinSessionForm: handleSubmit result:", result);
   };
 
   return (

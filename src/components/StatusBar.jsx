@@ -1,9 +1,18 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { SESSION_STATUS, USER_ROLES } from '../models/types';
 
 export default function StatusBar({ currentUser, sessionStatus, votingStatus }) {
+  // Add state to track the session status locally with initial value from props
+  const [currentSessionStatus, setCurrentSessionStatus] = useState(sessionStatus);
+
+  // Update local state when props change
+  useEffect(() => {
+    console.log("StatusBar: sessionStatus prop changed to:", sessionStatus); 
+    setCurrentSessionStatus(sessionStatus);
+  }, [sessionStatus]);
+
   const getStatusText = () => {
-    switch(sessionStatus) {
+    switch(currentSessionStatus) {
       case SESSION_STATUS.ACTIVE:
         return 'Voting in Progress';
       case SESSION_STATUS.REVEALED:
@@ -14,7 +23,7 @@ export default function StatusBar({ currentUser, sessionStatus, votingStatus }) 
   };
 
   const getStatusClass = () => {
-    switch(sessionStatus) {
+    switch(currentSessionStatus) {
       case SESSION_STATUS.ACTIVE:
         return 'bg-green-600';
       case SESSION_STATUS.REVEALED:
@@ -35,7 +44,6 @@ export default function StatusBar({ currentUser, sessionStatus, votingStatus }) 
             {getStatusText()}
           </span>
         </div>
-        <div>{votingStatus}</div>
       </div>
     </div>
   );

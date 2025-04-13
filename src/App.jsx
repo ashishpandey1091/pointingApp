@@ -38,6 +38,7 @@ function App() {
     joinSession(newSessionId, name, true); // Join as observer
     return newSessionId;
   };
+  console.log('Session Status:', sessionStatus);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white p-4 md:p-8">
@@ -94,7 +95,9 @@ function App() {
                 />
               )}
             </div>
+            
           </>
+          
         ) : (
           <LandingPage 
             onCreateSession={handleCreateSession}

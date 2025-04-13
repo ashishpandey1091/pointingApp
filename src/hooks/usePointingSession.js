@@ -1,178 +1,402 @@
-import { useState, useEffect } from "react";
-import { USER_ROLES, SESSION_STATUS } from "../models/types";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { SESSION_STATUS, USER_ROLES } from "../models/types";
+const POINT_VALUES = ["1", "2", "3", "5", "8", "13", "21", "?"];
 
-export default function usePointingSession() {
-  // Session management
+// Helper for storing session data in localStorage
+const sessionStorage = {
+  save: (sessionId, data) => {
+    localStorage.setItem(`pointing-session-${sessionId}`, JSON.stringify(data));
+  },
+  load: (sessionId) => {
+    const data = localStorage.getItem(`pointing-session-${sessionId}`);
+    return data ? JSON.parse(data) : null;
+  },
+};
+
+function usePointingSession() {
+  // State
   const [sessionId, setSessionId] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [sessionStatus, setSessionStatus] = useState(SESSION_STATUS.WAITING);
   const [selectedPoint, setSelectedPoint] = useState(null);
-  const [pointValues] = useState([0.5, 1, 2, 3, 5, 8, 13]);
+  const [pointValues] = useState(POINT_VALUES);
 
-  // Check for existing user session in localStorage on mount
+  // BroadcastChannel reference - for cross-tab communication
+  const channelRef = useRef(null);
+
+  // Setup/cleanup BroadcastChannel when sessionId changes
   useEffect(() => {
-    const savedSession = localStorage.getItem("pointingSession");
-    if (savedSession) {
-      try {
-        const sessionData = JSON.parse(savedSession);
-        setSessionId(sessionData.sessionId);
-        setCurrentUser(sessionData.user);
-        // In a real app, we would fetch participants from the server here
-        // using the sessionId
-      } catch (e) {
-        console.error("Failed to load saved session");
-        localStorage.removeItem("pointingSession");
+    if (!sessionId) return;
+
+    // Create or join the channel for this session
+    const channel = new BroadcastChannel(`pointing-session-${sessionId}`);
+    channelRef.current = channel;
+
+    // Listen for session updates
+    channel.onmessage = (event) => {
+      const { type, data } = event.data;
+
+      switch (type) {
+        case "SESSION_UPDATE":
+          // Update local state with the received session state
+          setSessionStatus(data.status);
+          setParticipants(data.participants);
+
+          // Also update in localStorage
+          sessionStorage.save(sessionId, data);
+          break;
+
+        case "JOIN_REQUEST":
+          // Only the observer should handle join requests
+          if (currentUser?.role === USER_ROLES.OBSERVER) {
+            const newUser = { ...data.user, vote: null };
+            const updatedParticipants = [...participants, newUser];
+
+            // Update state
+            setParticipants(updatedParticipants);
+
+            // Broadcast updated session state
+            const sessionState = {
+              status: sessionStatus,
+              participants: updatedParticipants,
+            };
+
+            channel.postMessage({
+              type: "SESSION_UPDATE",
+              data: sessionState,
+            });
+
+            // Save to localStorage
+            sessionStorage.save(sessionId, sessionState);
+          }
+          break;
+
+        case "LEAVE_SESSION":
+          // Only the observer should handle leave requests
+          if (currentUser?.role === USER_ROLES.OBSERVER) {
+            const updatedParticipants = participants.filter(
+              (p) => p.id !== data.userId
+            );
+
+            // Update state
+            setParticipants(updatedParticipants);
+
+            // Broadcast updated session state
+            const sessionState = {
+              status: sessionStatus,
+              participants: updatedParticipants,
+            };
+
+            channel.postMessage({
+              type: "SESSION_UPDATE",
+              data: sessionState,
+            });
+
+            // Save to localStorage
+            sessionStorage.save(sessionId, sessionState);
+          }
+          break;
+
+        case "SUBMIT_VOTE":
+          // Only the observer should update votes
+          if (currentUser?.role === USER_ROLES.OBSERVER) {
+            const updatedParticipants = participants.map((p) =>
+              p.id === data.userId ? { ...p, vote: data.vote } : p
+            );
+
+            // Update state
+            setParticipants(updatedParticipants);
+
+            // Broadcast updated session state
+            const sessionState = {
+              status: sessionStatus,
+              participants: updatedParticipants,
+            };
+
+            channel.postMessage({
+              type: "SESSION_UPDATE",
+              data: sessionState,
+            });
+
+            // Save to localStorage
+            sessionStorage.save(sessionId, sessionState);
+          }
+          break;
+
+        case "SESSION_ACTION":
+          // Only the observer should update session status
+          if (currentUser?.role === USER_ROLES.OBSERVER) {
+            let newStatus = sessionStatus;
+            let updatedParticipants = [...participants];
+
+            if (data.action === "START") {
+              newStatus = SESSION_STATUS.ACTIVE;
+              // Reset all votes
+              updatedParticipants = participants.map((p) => ({
+                ...p,
+                vote: null,
+              }));
+            } else if (data.action === "END") {
+              newStatus = SESSION_STATUS.REVEALED;
+            }
+
+            // Update state
+            setSessionStatus(newStatus);
+            setParticipants(updatedParticipants);
+
+            // Broadcast updated session state
+            const sessionState = {
+              status: newStatus,
+              participants: updatedParticipants,
+            };
+
+            channel.postMessage({
+              type: "SESSION_UPDATE",
+              data: sessionState,
+            });
+
+            // Save to localStorage
+            sessionStorage.save(sessionId, sessionState);
+          }
+          break;
       }
-    }
-  }, []);
-
-  // Save session to localStorage whenever it changes
-  useEffect(() => {
-    if (currentUser && sessionId) {
-      localStorage.setItem(
-        "pointingSession",
-        JSON.stringify({
-          sessionId,
-          user: currentUser,
-        })
-      );
-    }
-  }, [currentUser, sessionId]);
-
-  const createSession = () => {
-    // Generate a random 6-character session ID
-    const newSessionId = Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase();
-    setSessionId(newSessionId);
-    return newSessionId;
-  };
-
-  const joinSession = (joinSessionId, name, isObserver) => {
-    if (!joinSessionId.trim() || !name.trim())
-      return { success: false, message: "Session ID and name are required" };
-
-    // In a real app, we would verify if the session exists on the server
-    setSessionId(joinSessionId.trim());
-
-    const newUser = {
-      id: Date.now().toString(),
-      name: name.trim(),
-      role: isObserver ? USER_ROLES.OBSERVER : USER_ROLES.VOTER,
-      vote: null,
     };
 
-    // Check if there's already an observer (in a real app, this would be checked server-side)
-    if (
-      isObserver &&
-      participants.some((p) => p.role === USER_ROLES.OBSERVER)
-    ) {
-      return {
-        success: false,
-        message: "An observer already exists for this session",
+    // Clean up function
+    return () => {
+      if (channel) {
+        channel.close();
+      }
+    };
+  }, [sessionId, currentUser, participants, sessionStatus]);
+
+  // Create a new session
+  const createSession = useCallback(() => {
+    const newSessionId = Math.random().toString(36).substring(2, 9);
+    console.log("Creating session:", newSessionId);
+    return newSessionId;
+  }, []);
+
+  // Join a session
+  const joinSession = useCallback(
+    (sessionIdToJoin, userName, isObserver = false) => {
+      const role = isObserver ? USER_ROLES.OBSERVER : USER_ROLES.VOTER;
+      const userId = `user-${Math.random().toString(36).substring(2, 9)}`;
+
+      const user = {
+        id: userId,
+        name: userName,
+        role: role,
       };
+
+      setSessionId(sessionIdToJoin);
+      setCurrentUser(user);
+
+      // Try to load existing session data from localStorage
+      const existingSessionData = sessionStorage.load(sessionIdToJoin);
+
+      if (isObserver) {
+        // If creating as observer, initialize the session
+        let initialParticipants = [user];
+        let initialStatus = SESSION_STATUS.WAITING;
+
+        if (existingSessionData) {
+          // If session data exists, use it but add ourselves
+          initialParticipants = [
+            ...existingSessionData.participants.filter((p) => p.id !== userId),
+            user,
+          ];
+          initialStatus = existingSessionData.status;
+        }
+
+        setParticipants(initialParticipants);
+        setSessionStatus(initialStatus);
+
+        // Save initial state
+        const sessionState = {
+          status: initialStatus,
+          participants: initialParticipants,
+        };
+
+        sessionStorage.save(sessionIdToJoin, sessionState);
+
+        // Broadcast the session state after channel is established
+        setTimeout(() => {
+          if (channelRef.current) {
+            channelRef.current.postMessage({
+              type: "SESSION_UPDATE",
+              data: sessionState,
+            });
+          }
+        }, 100);
+      } else {
+        // If joining as voter
+        if (existingSessionData) {
+          // Use the existing session data
+          setParticipants(existingSessionData.participants);
+          setSessionStatus(existingSessionData.status);
+        }
+
+        // Send join request after channel is established
+        setTimeout(() => {
+          if (channelRef.current) {
+            channelRef.current.postMessage({
+              type: "JOIN_REQUEST",
+              data: { user },
+            });
+          }
+        }, 100);
+      }
+    },
+    []
+  );
+
+  const logout = useCallback(() => {
+    if (sessionId && currentUser && channelRef.current) {
+      // Send LEAVE_SESSION message via BroadcastChannel
+      channelRef.current.postMessage({
+        type: "LEAVE_SESSION",
+        data: { userId: currentUser.id },
+      });
+
+      // Close BroadcastChannel
+      channelRef.current.close();
+      channelRef.current = null;
     }
 
-    setParticipants([...participants, newUser]);
-    setCurrentUser(newUser);
-
-    return { success: true };
-  };
-
-  const logout = () => {
-    setCurrentUser(null);
+    // Reset local state
     setSessionId(null);
+    setCurrentUser(null);
+    setParticipants([]);
+    setSessionStatus(SESSION_STATUS.WAITING);
     setSelectedPoint(null);
-    localStorage.removeItem("pointingSession");
-    // In a real app, we might want to notify the server that the user has left
-    return true;
-  };
+  }, [sessionId, currentUser]);
 
-  const startSession = () => {
-    if (currentUser?.role !== USER_ROLES.OBSERVER) return false;
+  const startSession = useCallback(() => {
+    if (currentUser?.role !== USER_ROLES.OBSERVER || !channelRef.current)
+      return;
 
-    // Reset votes for all participants
-    const resetParticipants = participants.map((p) => ({
-      ...p,
-      vote: null,
-    }));
+    // Reset all votes
+    const updatedParticipants = participants.map((p) => ({ ...p, vote: null }));
 
-    setParticipants(resetParticipants);
+    // Update local state
     setSessionStatus(SESSION_STATUS.ACTIVE);
-    setSelectedPoint(null);
-    return true;
-  };
-
-  const endSession = () => {
-    if (currentUser?.role !== USER_ROLES.OBSERVER) return false;
-    setSessionStatus(SESSION_STATUS.REVEALED);
-    return true;
-  };
-
-  const selectPoint = (point) => {
-    if (
-      sessionStatus !== SESSION_STATUS.ACTIVE ||
-      !currentUser ||
-      currentUser.role === USER_ROLES.OBSERVER
-    )
-      return false;
-
-    setSelectedPoint(point);
-
-    // Update user's vote
-    const updatedParticipants = participants.map((p) =>
-      p.id === currentUser.id ? { ...p, vote: point } : p
-    );
-
     setParticipants(updatedParticipants);
 
-    // Also update currentUser
-    setCurrentUser({ ...currentUser, vote: point });
-    return true;
-  };
-
-  const getVoteSummary = () => {
-    if (sessionStatus !== SESSION_STATUS.REVEALED) return [];
-
-    const summary = {};
-    participants.forEach((p) => {
-      if (p.vote !== null && p.role === USER_ROLES.VOTER) {
-        summary[p.vote] = (summary[p.vote] || 0) + 1;
-      }
+    // Broadcast session action
+    channelRef.current.postMessage({
+      type: "SESSION_ACTION",
+      data: {
+        action: "START",
+      },
     });
 
-    return Object.entries(summary)
-      .map(([point, count]) => ({
-        point: parseFloat(point),
-        count,
-      }))
-      .sort((a, b) => a.point - b.point);
-  };
+    // Save updated session state
+    const sessionState = {
+      status: SESSION_STATUS.ACTIVE,
+      participants: updatedParticipants,
+    };
+    sessionStorage.save(sessionId, sessionState);
+  }, [currentUser, participants, sessionId]);
 
-  const getAverageVote = () => {
-    const voters = participants.filter(
-      (p) => p.vote !== null && p.role === USER_ROLES.VOTER
+  // End session and reveal results (observer only)
+  const endSession = useCallback(() => {
+    if (currentUser?.role !== USER_ROLES.OBSERVER || !channelRef.current)
+      return;
+
+    // Update local state
+    setSessionStatus(SESSION_STATUS.REVEALED);
+
+    // Broadcast session action
+    channelRef.current.postMessage({
+      type: "SESSION_ACTION",
+      data: {
+        action: "END",
+      },
+    });
+
+    // Save updated session state
+    const sessionState = {
+      status: SESSION_STATUS.REVEALED,
+      participants,
+    };
+    sessionStorage.save(sessionId, sessionState);
+  }, [currentUser, participants, sessionId]);
+
+  const selectPoint = useCallback(
+    (point) => {
+      if (
+        currentUser?.role !== USER_ROLES.VOTER ||
+        !sessionId ||
+        !channelRef.current
+      )
+        return;
+
+      setSelectedPoint(point);
+
+      // Broadcast vote to observer
+      channelRef.current.postMessage({
+        type: "SUBMIT_VOTE",
+        data: {
+          userId: currentUser.id,
+          vote: point,
+        },
+      });
+    },
+    [currentUser, sessionId]
+  );
+
+  // Get vote summary (for results display)
+  const getVoteSummary = useCallback(() => {
+    const summary = {};
+
+    if (sessionStatus === SESSION_STATUS.REVEALED) {
+      participants
+        .filter((p) => p.role === USER_ROLES.VOTER && p.vote !== null)
+        .forEach((voter) => {
+          summary[voter.vote] = (summary[voter.vote] || 0) + 1;
+        });
+    }
+
+    return summary;
+  }, [participants, sessionStatus]);
+
+  // Calculate average vote
+  const getAverageVote = useCallback(() => {
+    if (sessionStatus !== SESSION_STATUS.REVEALED) return null;
+
+    const votes = participants
+      .filter(
+        (p) => p.role === USER_ROLES.VOTER && p.vote !== null && p.vote !== "?"
+      )
+      .map((v) => parseInt(v.vote, 10));
+
+    if (votes.length === 0) return null;
+
+    return (votes.reduce((sum, vote) => sum + vote, 0) / votes.length).toFixed(
+      1
     );
-    if (voters.length === 0) return 0;
+  }, [participants, sessionStatus]);
 
-    const sum = voters.reduce((total, p) => total + p.vote, 0);
-    return (sum / voters.length).toFixed(1);
-  };
-
-  const getVotingStatus = () => {
-    if (sessionStatus !== SESSION_STATUS.ACTIVE) return "";
+  // Get current voting status (for status display)
+  const getVotingStatus = useCallback(() => {
+    if (sessionStatus !== SESSION_STATUS.ACTIVE) return null;
 
     const totalVoters = participants.filter(
       (p) => p.role === USER_ROLES.VOTER
     ).length;
     const votedCount = participants.filter(
-      (p) => p.vote !== null && p.role === USER_ROLES.VOTER
+      (p) => p.role === USER_ROLES.VOTER && p.vote !== null
     ).length;
 
-    return `${votedCount} out of ${totalVoters} voted`;
-  };
+    return {
+      total: totalVoters,
+      voted: votedCount,
+      percentage:
+        totalVoters > 0 ? Math.round((votedCount / totalVoters) * 100) : 0,
+    };
+  }, [participants, sessionStatus]);
 
   return {
     sessionId,
@@ -190,7 +414,9 @@ export default function usePointingSession() {
     getVoteSummary,
     getAverageVote,
     getVotingStatus,
-    SESSION_STATUS,
     USER_ROLES,
+    SESSION_STATUS,
   };
 }
+
+export default usePointingSession;

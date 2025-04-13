@@ -8,3 +8,9 @@ export const SESSION_STATUS = {
   ACTIVE: "active",
   REVEALED: "revealed",
 };
+
+export const VOTING_STATUS = {
+  PROGRESS: "progress",
+  COMPLETED: "completed",
+  NOTSTARTED: "notstarted",
+};

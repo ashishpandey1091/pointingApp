@@ -5,6 +5,7 @@ export default function PointingCards({ sessionStatus, pointValues, selectedPoin
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg p-6">
       <h2 className="text-xl font-semibold mb-4">Your Vote</h2>
+      <p className="text-gray-400 mb-4">Session Status: {sessionStatus}</p>
       <div className="flex flex-wrap gap-3 justify-center">
         {pointValues.map(point => (
           <button

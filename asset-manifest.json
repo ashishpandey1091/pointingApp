@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.css": "/taskestimater/static/css/main.0edf4218.css",
-    "main.js": "/taskestimater/static/js/main.bdad6fcd.js",
-    "index.html": "/taskestimater/index.html",
-    "main.0edf4218.css.map": "/taskestimater/static/css/main.0edf4218.css.map",
-    "main.bdad6fcd.js.map": "/taskestimater/static/js/main.bdad6fcd.js.map"
+    "main.css": "/pointingApp/static/css/main.0edf4218.css",
+    "main.js": "/pointingApp/static/js/main.bdad6fcd.js",
+    "index.html": "/pointingApp/index.html",
+    "main.0edf4218.css.map": "/pointingApp/static/css/main.0edf4218.css.map",
+    "main.bdad6fcd.js.map": "/pointingApp/static/js/main.bdad6fcd.js.map"
   },
   "entrypoints": [
     "static/css/main.0edf4218.css",
